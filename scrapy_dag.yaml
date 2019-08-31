@@ -1,0 +1,68 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: dag-diamond-
+spec:
+  entrypoint: casper-workflow
+  volumes:
+  - name: google-cloud-key
+    secret:
+      secretName: casper-worker-key
+  - name: my-volume
+    persistentVolumeClaim:
+      claimName: my-vol
+  templates:
+  - name: crawl
+    container:
+      image:  hemanthk0208/spider:v1
+      resources:
+        requests:
+          memory: "100Mi"
+          cpu: "0.05"
+        limits:
+          memory: "120Mi"
+          cpu: "0.09"
+      volumeMounts:
+      - name: google-cloud-key
+        mountPath: /var/secrets/google
+      - name: my-volume
+        mountPath: /home/git/
+        readOnly: true
+      env:
+      - name: GOOGLE_APPLICATION_CREDENTIALS
+        value: /var/secrets/google/key.json
+      command: ["scrapy", "runspider", "/home/git/app/code/crawl.py"]
+  - name: spider
+    container:
+      image:  hemanthk0208/spider:v1
+      resources:
+        requests:
+          memory: "150Mi"
+          cpu: "0.05"
+        limits:
+          memory: "180Mi"
+          cpu: "0.09"
+      volumeMounts:
+      - name: google-cloud-key
+        mountPath: /var/secrets/google
+      - name: my-volume
+        mountPath: /home/git/
+        readOnly: true
+      env:
+      - name: GOOGLE_APPLICATION_CREDENTIALS
+        value: /var/secrets/google/key.json
+      command: ["scrapy", "runspider", "/home/git/app/code/spider.py"]
+  - name: casper-workflow
+    dag:
+      tasks:
+      - name: crawl-1
+        template: crawl
+      - name: spider-1
+        dependencies: [crawl-1]
+        template: spider
+      - name: spider-2
+        dependencies: [crawl-1]
+        template: spider
+      - name: spider-3
+        dependencies: [crawl-1]
+        template: spider
